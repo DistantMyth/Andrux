@@ -127,7 +127,7 @@ install_termux_packages() {
 # check_termux_x11_app
 # Returns 0 if the Termux:X11 companion app is installed on the device.
 check_termux_x11_app() {
-    if pm list packages 2>/dev/null | grep -q 'com.termux.x11'; then
+    if pm list packages 2>/dev/null | grep 'com.termux.x11' >/dev/null; then
         log_success "Termux:X11 app is installed"
         return 0
     fi
@@ -140,7 +140,7 @@ check_termux_x11_app() {
 # check_termux_api_app
 # Returns 0 if the Termux:API companion app is installed on the device.
 check_termux_api_app() {
-    if pm list packages 2>/dev/null | grep -q 'com.termux.api'; then
+    if pm list packages 2>/dev/null | grep 'com.termux.api' >/dev/null; then
         log_success "Termux:API app is installed"
         return 0
     fi
