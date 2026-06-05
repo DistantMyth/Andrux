@@ -196,6 +196,13 @@ setup_base_system() {
 
     # --- Step 1: Update package manager ---
     log_step "Updating package manager inside $DISTRO_ALIAS..."
+
+    # Arch Linux pacman sandboxing (Landlock/usernamespaces) fails in proot.
+    if [[ "$pm" == "pacman" ]]; then
+        run_proot_cmd "sed -i 's/^#DisableSandbox/DisableSandbox/g' /etc/pacman.conf 2>/dev/null || true"
+        run_proot_cmd "pacman-key --init && pacman-key --populate archlinuxarm 2>/dev/null || true"
+    fi
+
     local update_cmd
     update_cmd="$(get_proot_update_cmd)" || return 1
 
