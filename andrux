@@ -1,0 +1,450 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# =============================================================================
+#     _              _                
+#    / \   _ __   __| |_ __ _   ___  __
+#   / _ \ | '_ \ / _` | '__| | | \ \/ /
+#  / ___ \| | | | (_| | |  | |_| |>  < 
+# /_/   \_\_| |_|\__,_|_|   \__,_/_/\_\
+#
+# Andrux — Linux Desktop on Android
+# =============================================================================
+# Install ready-to-use Linux desktop environments on Android via Termux
+# with GPU acceleration, audio, and networking out of the box.
+#
+# Usage: bash andrux [--uninstall] [--status] [--help]
+# =============================================================================
+
+set -euo pipefail
+
+# ---- Resolve script directory ----
+ANDRUX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export ANDRUX_DIR
+
+# ---- Source library modules ----
+source "$ANDRUX_DIR/lib/common.sh"
+source "$ANDRUX_DIR/lib/detect.sh"
+source "$ANDRUX_DIR/lib/prereqs.sh"
+source "$ANDRUX_DIR/lib/distro.sh"
+source "$ANDRUX_DIR/lib/desktop.sh"
+source "$ANDRUX_DIR/lib/gpu.sh"
+source "$ANDRUX_DIR/lib/audio.sh"
+source "$ANDRUX_DIR/lib/network.sh"
+source "$ANDRUX_DIR/lib/apps.sh"
+
+# =============================================================================
+# Main Functions
+# =============================================================================
+
+show_banner() {
+    clear
+    echo -e "${BOLD}${CYAN}"
+    echo '    _              _                '
+    echo '   / \   _ __   __| |_ __ _   ___  __'
+    echo '  / _ \ |  _ \ / _` |  __| | | \ \/ /'
+    echo ' / ___ \| | | | (_| | |  | |_| |>  < '
+    echo '/_/   \_\_| |_|\__,_|_|   \__,_/_/\_\'
+    echo ''
+    echo -e "${RESET}${BOLD}  Linux Desktop on Android — v1.0${RESET}"
+    echo -e "  ${DIM}GPU-accelerated • Audio • Networking${RESET}"
+    echo ''
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo ''
+}
+
+show_help() {
+    echo "Usage: bash andrux [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  (none)        Run the interactive installer"
+    echo "  --status      Show current installation status"
+    echo "  --uninstall   Remove an installed distro"
+    echo "  --help, -h    Show this help message"
+    echo ""
+    echo "After installation, use these commands:"
+    echo "  start-desktop     Start the desktop environment"
+    echo "  kill-desktop      Stop the desktop environment"
+    echo ""
+}
+
+show_status() {
+    show_banner
+    log_info "Andrux Installation Status"
+    echo ""
+
+    if [ -f "$ANDRUX_CONFIG/config" ]; then
+        source "$ANDRUX_CONFIG/config"
+        echo -e "  ${GREEN}●${RESET} Andrux is installed"
+        echo -e "  Distro:  ${BOLD}${DISTRO_NAME:-$DISTRO_ALIAS}${RESET}"
+        echo -e "  Desktop: ${BOLD}${DESKTOP_ENV^^}${RESET}"
+        echo -e "  User:    ${BOLD}${USERNAME}${RESET}"
+        echo -e "  GPU:     ${BOLD}${GPU_METHOD:-software}${RESET} (${GPU_TYPE:-unknown})"
+        echo ""
+
+        # Check services
+        if pgrep -f "termux-x11.*:0" > /dev/null 2>&1; then
+            echo -e "  ${GREEN}●${RESET} Termux:X11 is running"
+        else
+            echo -e "  ${RED}●${RESET} Termux:X11 is not running"
+        fi
+
+        if pulseaudio --check 2>/dev/null; then
+            echo -e "  ${GREEN}●${RESET} PulseAudio is running"
+        else
+            echo -e "  ${RED}●${RESET} PulseAudio is not running"
+        fi
+
+        if pgrep -f "virgl_test_server" > /dev/null 2>&1; then
+            echo -e "  ${GREEN}●${RESET} VirGL server is running"
+        else
+            echo -e "  ${RED}●${RESET} VirGL server is not running"
+        fi
+    else
+        echo -e "  ${RED}●${RESET} Andrux is not installed"
+        echo "  Run 'bash andrux' to install."
+    fi
+    echo ""
+}
+
+do_uninstall() {
+    show_banner
+
+    if [ ! -f "$ANDRUX_CONFIG/config" ]; then
+        log_error "No Andrux installation found."
+        exit 1
+    fi
+
+    source "$ANDRUX_CONFIG/config"
+
+    log_warn "This will remove the following installation:"
+    echo ""
+    echo -e "  Distro:  ${BOLD}${DISTRO_NAME:-$DISTRO_ALIAS}${RESET}"
+    echo -e "  Desktop: ${BOLD}${DESKTOP_ENV^^}${RESET}"
+    echo ""
+
+    if confirm "Are you sure you want to uninstall?"; then
+        # Kill any running sessions
+        bash "$ANDRUX_DIR/launchers/kill-desktop.sh" 2>/dev/null || true
+
+        # Remove proot distro
+        log_info "Removing distro '${DISTRO_ALIAS}'..."
+        proot-distro remove "$DISTRO_ALIAS" 2>/dev/null || true
+        log_success "Distro removed."
+
+        # Remove config
+        rm -rf "$ANDRUX_CONFIG"
+        log_success "Configuration removed."
+
+        # Remove launcher symlinks
+        rm -f "$PREFIX/bin/start-desktop" 2>/dev/null || true
+        rm -f "$PREFIX/bin/kill-desktop" 2>/dev/null || true
+        log_success "Launcher symlinks removed."
+
+        echo ""
+        log_success "Andrux has been uninstalled."
+        log_info "Termux packages (proot-distro, pulseaudio, etc.) were kept."
+    else
+        log_info "Uninstall cancelled."
+    fi
+}
+
+# =============================================================================
+# Interactive Installer
+# =============================================================================
+
+select_distro() {
+    local choice
+    choice=$(dialog --clear \
+        --backtitle "Andrux — Linux Desktop on Android" \
+        --title "Select Distribution" \
+        --menu "Choose a Linux distribution to install:" 15 60 4 \
+        "debian"  "Debian — Stable & reliable (recommended)" \
+        "ubuntu"  "Ubuntu — User-friendly, large community" \
+        "arch"    "Arch Linux — Rolling release, cutting-edge" \
+        "fedora"  "Fedora — Modern, enterprise-backed" \
+        2>&1 >/dev/tty)
+
+    echo "$choice"
+}
+
+select_desktop() {
+    local choice
+    choice=$(dialog --clear \
+        --backtitle "Andrux — Linux Desktop on Android" \
+        --title "Select Desktop Environment" \
+        --menu "Choose a desktop environment:" 14 60 3 \
+        "xfce"   "XFCE — Lightweight & fast (recommended)" \
+        "kde"    "KDE Plasma — Feature-rich & beautiful" \
+        "gnome"  "GNOME — Modern & polished" \
+        2>&1 >/dev/tty)
+
+    echo "$choice"
+}
+
+select_username() {
+    local username
+    username=$(dialog --clear \
+        --backtitle "Andrux — Linux Desktop on Android" \
+        --title "Create User Account" \
+        --inputbox "Enter a username for your Linux desktop:\n(lowercase, no spaces)" \
+        10 50 "andrux" \
+        2>&1 >/dev/tty)
+
+    # Validate username
+    if [[ ! "$username" =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
+        dialog --msgbox "Invalid username. Must start with a lowercase letter and contain only lowercase letters, numbers, underscores, or hyphens." 8 50
+        select_username
+        return
+    fi
+
+    echo "$username"
+}
+
+select_password() {
+    local password
+    local password_confirm
+
+    password=$(dialog --clear \
+        --backtitle "Andrux — Linux Desktop on Android" \
+        --title "Set Password" \
+        --insecure \
+        --passwordbox "Enter a password for user '$USERNAME':" \
+        10 50 \
+        2>&1 >/dev/tty)
+
+    password_confirm=$(dialog --clear \
+        --backtitle "Andrux — Linux Desktop on Android" \
+        --title "Confirm Password" \
+        --insecure \
+        --passwordbox "Confirm the password:" \
+        10 50 \
+        2>&1 >/dev/tty)
+
+    if [ "$password" != "$password_confirm" ]; then
+        dialog --msgbox "Passwords do not match. Please try again." 6 50
+        select_password
+        return
+    fi
+
+    if [ -z "$password" ]; then
+        dialog --msgbox "Password cannot be empty." 6 50
+        select_password
+        return
+    fi
+
+    echo "$password"
+}
+
+confirm_installation() {
+    dialog --clear \
+        --backtitle "Andrux — Linux Desktop on Android" \
+        --title "Confirm Installation" \
+        --yesno "Ready to install with these settings:\n\n  Distribution: ${DISTRO_NAME}\n  Desktop:      ${DESKTOP_ENV^^}\n  Username:     ${USERNAME}\n  GPU:          ${GPU_TYPE} (${GPU_METHOD})\n\nThis will download and install several GB of packages.\nMake sure you have a stable internet connection.\n\nProceed with installation?" \
+        16 55
+}
+
+run_installation() {
+    clear
+    show_banner
+
+    local total_steps=8
+    local current_step=0
+
+    # Step 1: Install Termux prerequisites
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Installing Termux prerequisites..."
+    install_all_prereqs
+
+    # Step 2: Install distribution
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Installing ${DISTRO_NAME}..."
+    install_distro "$DISTRO_ALIAS"
+
+    # Step 3: Setup base system
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Setting up base system..."
+    setup_base_system
+
+    # Step 4: Create user account
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Creating user account '${USERNAME}'..."
+    create_user "$USERNAME" "$USER_PASSWORD"
+
+    # Step 5: Install desktop environment
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Installing ${DESKTOP_ENV^^} desktop environment..."
+    log_warn "This step may take 10-30 minutes depending on your internet speed."
+    install_desktop_environment
+    configure_desktop
+
+    # Step 6: Configure GPU acceleration
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Configuring GPU acceleration (${GPU_METHOD})..."
+    setup_gpu_acceleration
+
+    # Step 7: Configure audio & network
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Configuring audio and networking..."
+    setup_audio
+    setup_network
+
+    # Step 8: Install default apps
+    current_step=$((current_step + 1))
+    echo ""
+    log_step "[$current_step/$total_steps] Installing default applications..."
+    install_default_apps
+
+    # Save configuration
+    save_config
+
+    # Create launcher symlinks
+    log_info "Creating launcher commands..."
+    chmod +x "$ANDRUX_DIR/launchers/start-desktop.sh"
+    chmod +x "$ANDRUX_DIR/launchers/kill-desktop.sh"
+    ln -sf "$ANDRUX_DIR/launchers/start-desktop.sh" "$PREFIX/bin/start-desktop"
+    ln -sf "$ANDRUX_DIR/launchers/kill-desktop.sh" "$PREFIX/bin/kill-desktop"
+    log_success "Commands 'start-desktop' and 'kill-desktop' are now available."
+
+    # Done!
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${GREEN}${BOLD}  ✓ Installation Complete!${RESET}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo ""
+    echo -e "  To start your desktop, run:"
+    echo -e "    ${BOLD}start-desktop${RESET}"
+    echo ""
+    echo -e "  To stop the desktop, run:"
+    echo -e "    ${BOLD}kill-desktop${RESET}"
+    echo ""
+    echo -e "  Then switch to the ${BOLD}Termux:X11${RESET} app to see your desktop."
+    echo ""
+    echo -e "${YELLOW}  Tip: If the desktop doesn't appear, try running${RESET}"
+    echo -e "${YELLOW}  'start-desktop --no-gpu' to use software rendering.${RESET}"
+    echo ""
+}
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+main() {
+    # Parse arguments
+    case "${1:-}" in
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        --status)
+            show_status
+            exit 0
+            ;;
+        --uninstall)
+            do_uninstall
+            exit 0
+            ;;
+    esac
+
+    # Check we're running in Termux
+    if [ ! -d "/data/data/com.termux" ]; then
+        echo "Error: This script must be run inside Termux on Android."
+        exit 1
+    fi
+
+    # Show banner
+    show_banner
+
+    # Check if dialog is available (needed for TUI)
+    if ! command -v dialog &> /dev/null; then
+        log_info "Installing dialog for the installer interface..."
+        pkg install -y dialog > /dev/null 2>&1
+    fi
+
+    # Step 1: Hardware detection
+    log_info "Detecting hardware..."
+    detect_gpu
+    detect_gpu_method
+    echo ""
+    print_device_info
+    echo ""
+
+    # Check if already installed
+    if [ -f "$ANDRUX_CONFIG/config" ]; then
+        source "$ANDRUX_CONFIG/config"
+        log_warn "An existing Andrux installation was found:"
+        echo -e "  Distro: ${BOLD}${DISTRO_NAME:-$DISTRO_ALIAS}${RESET}, Desktop: ${BOLD}${DESKTOP_ENV^^}${RESET}"
+        echo ""
+        if ! confirm "Do you want to reinstall? (This will remove the existing installation)"; then
+            log_info "Exiting. Use 'start-desktop' to start the existing installation."
+            exit 0
+        fi
+        # Clean up old installation
+        bash "$ANDRUX_DIR/launchers/kill-desktop.sh" 2>/dev/null || true
+        proot-distro remove "$DISTRO_ALIAS" 2>/dev/null || true
+        rm -rf "$ANDRUX_CONFIG"
+    fi
+
+    # Step 2: Interactive selection
+    local distro_key
+    distro_key=$(select_distro)
+    if [ -z "$distro_key" ]; then
+        log_info "Installation cancelled."
+        exit 0
+    fi
+
+    # Map distro key to alias and name
+    case "$distro_key" in
+        debian)  DISTRO_ALIAS="debian";     DISTRO_NAME="Debian" ;;
+        ubuntu)  DISTRO_ALIAS="ubuntu";     DISTRO_NAME="Ubuntu" ;;
+        arch)    DISTRO_ALIAS="archlinux";  DISTRO_NAME="Arch Linux" ;;
+        fedora)  DISTRO_ALIAS="fedora";     DISTRO_NAME="Fedora" ;;
+    esac
+
+    DESKTOP_ENV=$(select_desktop)
+    if [ -z "$DESKTOP_ENV" ]; then
+        log_info "Installation cancelled."
+        exit 0
+    fi
+
+    USERNAME=$(select_username)
+    if [ -z "$USERNAME" ]; then
+        log_info "Installation cancelled."
+        exit 0
+    fi
+
+    USER_PASSWORD=$(select_password)
+    if [ -z "$USER_PASSWORD" ]; then
+        log_info "Installation cancelled."
+        exit 0
+    fi
+
+    # Confirm
+    if ! confirm_installation; then
+        log_info "Installation cancelled."
+        exit 0
+    fi
+
+    # Run the installation
+    run_installation
+
+    clear
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${GREEN}${BOLD}  ✓ Andrux Installation Complete!${RESET}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo ""
+    echo -e "  ${BOLD}${DISTRO_NAME}${RESET} with ${BOLD}${DESKTOP_ENV^^}${RESET} is ready!"
+    echo ""
+    echo -e "  Start:  ${BOLD}start-desktop${RESET}"
+    echo -e "  Stop:   ${BOLD}kill-desktop${RESET}"
+    echo -e "  Status: ${BOLD}bash andrux --status${RESET}"
+    echo ""
+}
+
+main "$@"
