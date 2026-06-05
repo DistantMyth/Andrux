@@ -20,12 +20,17 @@ _ANDRUX_PREREQS_LOADED=1
 # ==============================================================================
 # Package Lists
 # ==============================================================================
+# Packages that must be installed BEFORE the main list (they add repos).
+readonly _ANDRUX_REPO_PACKAGES=(
+    x11-repo            # Adds the X11 package repository (needed for termux-x11-nightly)
+)
+
 # All Termux packages required for Andrux to function.  Grouped logically.
 readonly _ANDRUX_TERMUX_PACKAGES=(
     # --- Core proot infrastructure ---
     proot-distro
 
-    # --- Display server ---
+    # --- Display server (from x11-repo) ---
     termux-x11-nightly
 
     # --- Audio ---
@@ -34,7 +39,7 @@ readonly _ANDRUX_TERMUX_PACKAGES=(
     # --- GPU acceleration ---
     virglrenderer-android
     angle-android
-    vulkan-loader-android
+    vulkan-loader           # Meta-package: picks vulkan-loader-android or -generic
 
     # --- Termux integration ---
     termux-api
@@ -62,6 +67,22 @@ install_termux_packages() {
         return 1
     fi
 
+    # --- Install repo packages first (they add apt sources) ---
+    log_step "Installing additional package repositories..."
+    local repo_pkg
+    for repo_pkg in "${_ANDRUX_REPO_PACKAGES[@]}"; do
+        if check_package "$repo_pkg"; then
+            log_info "Already installed: $repo_pkg"
+        else
+            log_step "Installing $repo_pkg..."
+            pkg install -y "$repo_pkg" 2>&1 || log_warn "Failed to install repo: $repo_pkg"
+        fi
+    done
+
+    # Refresh after adding new repos
+    pkg update -y 2>&1 || true
+
+    # --- Install main packages ---
     log_step "Installing required Termux packages..."
 
     local failed_packages=()
@@ -89,7 +110,7 @@ install_termux_packages() {
             log_error "  • $pkg_name"
         done
         log_warn "Some packages may not be available in your Termux repository."
-        log_warn "Try updating your repos:  pkg update && pkg upgrade"
+        log_warn "Try: pkg update && pkg upgrade"
         return 1
     fi
 
@@ -112,7 +133,7 @@ check_termux_x11_app() {
     fi
 
     log_error "Termux:X11 app is NOT installed."
-    log_error "Please install it from: https://github.com/nicenyancat/termux-x11-nightly/releases"
+    log_error "Please install it from: https://github.com/nicenyancat/termux-x11/releases"
     return 1
 }
 

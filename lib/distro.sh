@@ -66,7 +66,7 @@ check_distro_installed() {
 
     # proot-distro list shows container names, one per section.
     # We check if the container directory exists directly.
-    local pd_dir="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs"
+    local pd_dir="/data/data/com.termux/files/usr/var/lib/proot-distro/containers"
     if [[ -d "${pd_dir}/${container}" ]]; then
         return 0
     fi
@@ -103,9 +103,23 @@ install_distro() {
 
     # Check if already installed.
     if check_distro_installed "$container"; then
-        log_info "$name ($container) is already installed."
+        log_warn "Container '$container' already exists (likely from a previous attempt)."
+        log_step "Resetting container to a clean state..."
+        
+        # Reset destroys the container and recreates it from the cached image
+        if ! proot-distro reset "$container" -q 2>/dev/null; then
+            log_warn "Reset failed. Removing and reinstalling..."
+            proot-distro remove "$container" -q 2>/dev/null || true
+            if ! proot-distro install "$image"; then
+                log_error "Failed to reinstall $name."
+                log_error "Check your internet connection and available storage."
+                return 1
+            fi
+        fi
+        
         DISTRO_ALIAS="$container"
         DISTRO_NAME="$name"
+        log_success "$name reset successfully."
         return 0
     fi
 
