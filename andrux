@@ -57,6 +57,9 @@ show_help() {
     echo "Options:"
     echo "  (none)        Run the interactive installer"
     echo "  --status      Show current installation status"
+    echo "  check-prereqs Check required Termux packages and companion apps"
+    echo "  install-prereqs"
+    echo "                Install required Termux packages and configure Termux"
     echo "  --uninstall   Remove an installed distro"
     echo "  --help, -h    Show this help message"
     echo ""
@@ -348,6 +351,14 @@ main() {
         --uninstall)
             do_uninstall
             exit 0
+            ;;
+        check-prereqs|--check-prereqs)
+            check_all_prereqs
+            exit $?
+            ;;
+        install-prereqs|--install-prereqs)
+            install_all_prereqs
+            exit $?
             ;;
     esac
 

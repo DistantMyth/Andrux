@@ -124,30 +124,58 @@ install_termux_packages() {
 # Several features require standalone Android apps to be installed alongside
 # the Termux terminal app.
 
+# _android_package_installed "package.name" [...]
+# Returns 0 when any candidate package is installed for the current Android user.
+_android_package_installed() {
+    local pkg
+
+    for pkg in "$@"; do
+        [[ -n "$pkg" ]] || continue
+
+        # Termux ships wrapper scripts for Android's package manager tools. Some
+        # ROMs expose one more reliably than the other, so try both.
+        if check_command pm && pm path "$pkg" >/dev/null 2>&1; then
+            return 0
+        fi
+
+        if check_command cmd && cmd package path "$pkg" >/dev/null 2>&1; then
+            return 0
+        fi
+
+        # Fallback for devices where path lookup is hidden but dumpsys can still
+        # read package metadata.
+        if check_command dumpsys && dumpsys package "$pkg" 2>/dev/null | grep -q "Package \\[$pkg\\]"; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # check_termux_x11_app
 # Returns 0 if the Termux:X11 companion app is installed on the device.
 check_termux_x11_app() {
-    if pm path 'com.termux.x11' >/dev/null 2>&1; then
+    if _android_package_installed 'com.termux.x11' 'com.termux.x11.debug'; then
         log_success "Termux:X11 app is installed"
         return 0
     fi
 
     log_error "Termux:X11 app is NOT installed."
-    log_error "Please install it from: https://github.com/nicenyancat/termux-x11/releases"
+    log_error "Please install it from: https://github.com/termux/termux-x11/releases"
     return 1
 }
 
 # check_termux_api_app
 # Returns 0 if the Termux:API companion app is installed on the device.
 check_termux_api_app() {
-    if pm path 'com.termux.api' >/dev/null 2>&1; then
+    if _android_package_installed 'com.termux.api' 'com.termux.api.debug'; then
         log_success "Termux:API app is installed"
         return 0
     fi
 
     log_warn "Termux:API app is not installed."
     log_warn "Some features (clipboard, notifications) will be unavailable."
-    log_warn "Install from: https://f-droid.org/packages/com.termux.api/"
+    log_warn "Install from: https://github.com/termux/termux-api/releases"
     return 1
 }
 
