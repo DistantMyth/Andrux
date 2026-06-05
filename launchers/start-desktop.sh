@@ -223,7 +223,7 @@ PROOT_ENV_VARS="$PROOT_ENV_VARS LANG=en_US.UTF-8"
 # Step 6: Determine desktop start command
 case "$DESKTOP_ENV" in
     xfce)  DE_CMD="startxfce4" ;;
-    kde)   DE_CMD="KWIN_COMPOSE=N startplasma-x11" ;;
+    kde)   DE_CMD="startplasma-x11" ;;
     gnome) DE_CMD="dbus-run-session -- gnome-session" ;;
     *)     log_error "Unknown desktop environment: $DESKTOP_ENV"; exit 1 ;;
 esac
@@ -294,6 +294,8 @@ proot-distro login "$DISTRO_ALIAS" \
         esac)
         export XDG_RUNTIME_DIR=/tmp/runtime-${USERNAME}
         export LANG=en_US.UTF-8
+        $([ "$DESKTOP_ENV" = "kde" ] && echo "export KWIN_COMPOSE=N")
+        $([ "$DESKTOP_ENV" = "kde" ] && echo "export QT_QPA_PLATFORMTHEME=kde")
         mkdir -p /tmp/runtime-${USERNAME}
         chmod 700 /tmp/runtime-${USERNAME}
         export DBUS_SESSION_BUS_ADDRESS=\$(dbus-daemon --session --fork --print-address 2>/dev/null || echo '')
