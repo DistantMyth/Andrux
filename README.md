@@ -37,7 +37,7 @@ Install ready-to-use Linux desktop environments on Android via Termux, with **GP
 ### 1. Install
 
 ```bash
-git clone https://github.com/user/Andrux.git
+git clone https://github.com/DistantMyth/Andrux.git
 cd Andrux
 bash andrux
 ```
