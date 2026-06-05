@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # Guard against double-sourcing
-[[ -n "$_ANDRUX_PREREQS_LOADED" ]] && return 0
+[[ -n "${_ANDRUX_PREREQS_LOADED:-}" ]] && return 0
 _ANDRUX_PREREQS_LOADED=1
 
 # ==============================================================================

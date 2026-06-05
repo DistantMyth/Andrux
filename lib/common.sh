@@ -17,7 +17,7 @@
 # ==============================================================================
 
 # Guard against double-sourcing
-[[ -n "$_ANDRUX_COMMON_LOADED" ]] && return 0
+[[ -n "${_ANDRUX_COMMON_LOADED:-}" ]] && return 0
 _ANDRUX_COMMON_LOADED=1
 
 # ==============================================================================

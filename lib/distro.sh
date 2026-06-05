@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # Guard against double-sourcing
-[[ -n "$_ANDRUX_DISTRO_LOADED" ]] && return 0
+[[ -n "${_ANDRUX_DISTRO_LOADED:-}" ]] && return 0
 _ANDRUX_DISTRO_LOADED=1
 
 # ==============================================================================

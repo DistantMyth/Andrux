@@ -15,7 +15,7 @@
 # ==============================================================================
 
 # Guard against double-sourcing
-[[ -n "$_ANDRUX_DETECT_LOADED" ]] && return 0
+[[ -n "${_ANDRUX_DETECT_LOADED:-}" ]] && return 0
 _ANDRUX_DETECT_LOADED=1
 
 # ==============================================================================
