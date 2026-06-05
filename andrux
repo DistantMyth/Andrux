@@ -45,7 +45,7 @@ show_banner() {
     echo '/_/   \_\_| |_|\__,_|_|   \__,_/_/\_\'
     echo ''
     echo -e "${RESET}${BOLD}  Linux Desktop on Android — v1.0${RESET}"
-    echo -e "  ${DIM}GPU-accelerated • Audio • Networking${RESET}"
+    echo -e "  \033[2mGPU-accelerated • Audio • Networking${RESET}"
     echo ''
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     echo ''
@@ -259,7 +259,7 @@ run_installation() {
     current_step=$((current_step + 1))
     echo ""
     log_step "[$current_step/$total_steps] Installing ${DISTRO_NAME}..."
-    install_distro "$DISTRO_ALIAS"
+    install_distro "$distro_key"
 
     # Step 3: Setup base system
     current_step=$((current_step + 1))

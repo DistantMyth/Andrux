@@ -278,14 +278,17 @@ _setup_timezone() {
 # User Creation
 # ==============================================================================
 
-# create_user USERNAME
+# create_user USERNAME [PASSWORD]
 # Creates a regular (non-root) user inside the proot environment with:
 #   • Home directory
 #   • bash shell
 #   • Passwordless sudo
 #   • Membership in audio, video, and other useful groups
+# If PASSWORD is provided, it will be used directly. Otherwise the user
+# is prompted interactively.
 create_user() {
     local username="$1"
+    local password="${2:-}"
 
     if [[ -z "$username" ]]; then
         log_error "create_user: no username provided"
@@ -339,30 +342,33 @@ create_user() {
     log_info "Passwordless sudo configured for '$username'"
 
     # --- Step 4: Set password ---
-    log_step "Set a password for '$username'."
+    # If no password was provided as argument, prompt interactively.
+    if [[ -z "$password" ]]; then
+        log_step "Set a password for '$username'."
 
-    local password password_confirm
-    while true; do
-        printf "${YELLOW}[?]${RESET} Enter password: " >&2
-        read -rs password
-        printf "\n" >&2
+        local password_confirm
+        while true; do
+            printf "${YELLOW}[?]${RESET} Enter password: " >&2
+            read -rs password
+            printf "\n" >&2
 
-        if [[ -z "$password" ]]; then
-            log_warn "Password cannot be empty. Try again."
-            continue
-        fi
+            if [[ -z "$password" ]]; then
+                log_warn "Password cannot be empty. Try again."
+                continue
+            fi
 
-        printf "${YELLOW}[?]${RESET} Confirm password: " >&2
-        read -rs password_confirm
-        printf "\n" >&2
+            printf "${YELLOW}[?]${RESET} Confirm password: " >&2
+            read -rs password_confirm
+            printf "\n" >&2
 
-        if [[ "$password" != "$password_confirm" ]]; then
-            log_warn "Passwords do not match. Try again."
-            continue
-        fi
+            if [[ "$password" != "$password_confirm" ]]; then
+                log_warn "Passwords do not match. Try again."
+                continue
+            fi
 
-        break
-    done
+            break
+        done
+    fi
 
     if ! run_proot_cmd "echo '${username}:${password}' | chpasswd"; then
         log_warn "Failed to set password via chpasswd."
