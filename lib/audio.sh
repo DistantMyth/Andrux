@@ -108,6 +108,13 @@ PAEOF
 #   Installs the PulseAudio client package inside proot.
 # -----------------------------------------------------------------------------
 _install_proot_pa_client() {
+    # If a PA provider is already installed (e.g. pipewire-pulse installed by KDE),
+    # pactl will be available. We can skip installation to avoid conflicts.
+    if run_proot_cmd "which pactl" >/dev/null 2>&1; then
+        log_info "PulseAudio client tools already installed (skipping)."
+        return 0
+    fi
+
     local pkg_mgr
     pkg_mgr="$(get_proot_pkg_manager)"
     local packages=""
