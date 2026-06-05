@@ -398,12 +398,12 @@ main() {
         exit 0
     fi
 
-    # Map distro key to alias and name
+    # Map distro key to container name and display name
     case "$distro_key" in
-        debian)  DISTRO_ALIAS="debian";     DISTRO_NAME="Debian" ;;
-        ubuntu)  DISTRO_ALIAS="ubuntu";     DISTRO_NAME="Ubuntu" ;;
-        arch)    DISTRO_ALIAS="archlinux";  DISTRO_NAME="Arch Linux" ;;
-        fedora)  DISTRO_ALIAS="fedora";     DISTRO_NAME="Fedora" ;;
+        debian)  DISTRO_ALIAS="debian";       DISTRO_NAME="Debian" ;;
+        ubuntu)  DISTRO_ALIAS="ubuntu";       DISTRO_NAME="Ubuntu" ;;
+        arch)    DISTRO_ALIAS="archlinuxarm"; DISTRO_NAME="Arch Linux ARM" ;;
+        fedora)  DISTRO_ALIAS="fedora";       DISTRO_NAME="Fedora" ;;
     esac
 
     DESKTOP_ENV=$(select_desktop)

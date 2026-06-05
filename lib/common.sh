@@ -232,7 +232,7 @@ get_proot_pkg_manager() {
         debian|ubuntu)
             echo "apt"
             ;;
-        archlinux)
+        archlinux|archlinuxarm)
             echo "pacman"
             ;;
         fedora)

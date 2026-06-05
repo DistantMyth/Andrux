@@ -20,20 +20,34 @@ _ANDRUX_DISTRO_LOADED=1
 # ==============================================================================
 # Distro Maps
 # ==============================================================================
-# Associative arrays mapping user-facing keys to proot-distro aliases and
-# human-readable display names.
+# proot-distro v5.1.4+ uses Docker Hub image references for installation
+# and container names for login/remove.
+#
+# Install:  proot-distro install <IMAGE_REF>
+# Login:    proot-distro login <CONTAINER_NAME> [--user USER] -- CMD
+# Remove:   proot-distro remove <CONTAINER_NAME>
 
-declare -A DISTRO_MAP=(
+# Docker image reference used for `proot-distro install`
+declare -A DISTRO_IMAGE=(
+    [debian]="debian:stable"
+    [ubuntu]="ubuntu:24.04"
+    [arch]="danhunsaker/archlinuxarm:latest"
+    [fedora]="fedora:latest"
+)
+
+# Container name that proot-distro assigns after install
+# (derived from the image name, without tag/registry prefix)
+declare -A DISTRO_CONTAINER=(
     [debian]="debian"
     [ubuntu]="ubuntu"
-    [arch]="archlinux"
+    [arch]="archlinuxarm"
     [fedora]="fedora"
 )
 
 declare -A DISTRO_NAMES=(
     [debian]="Debian"
     [ubuntu]="Ubuntu"
-    [arch]="Arch Linux"
+    [arch]="Arch Linux ARM"
     [fedora]="Fedora"
 )
 
@@ -41,17 +55,24 @@ declare -A DISTRO_NAMES=(
 # Distro Installation
 # ==============================================================================
 
-# check_distro_installed ALIAS
-# Returns 0 if a proot distro with the given alias is already installed.
+# check_distro_installed CONTAINER_NAME
+# Returns 0 if a proot container with the given name exists.
 check_distro_installed() {
-    local alias="$1"
-    if [[ -z "$alias" ]]; then
-        log_error "check_distro_installed: no alias provided"
+    local container="$1"
+    if [[ -z "$container" ]]; then
+        log_error "check_distro_installed: no container name provided"
         return 1
     fi
 
-    # `proot-distro list` shows installed distros with an "[installed]" tag.
-    if proot-distro list 2>/dev/null | grep -qE "^\s*${alias}\s.*\[installed\]"; then
+    # proot-distro list shows container names, one per section.
+    # We check if the container directory exists directly.
+    local pd_dir="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs"
+    if [[ -d "${pd_dir}/${container}" ]]; then
+        return 0
+    fi
+
+    # Fallback: parse `proot-distro list` output
+    if proot-distro list 2>/dev/null | grep -q "^${container}\b"; then
         return 0
     fi
 
@@ -59,99 +80,85 @@ check_distro_installed() {
 }
 
 # install_distro DISTRO_KEY
-# Installs a distribution via proot-distro.
+# Installs a distribution via proot-distro using Docker image references.
 # DISTRO_KEY is one of: debian, ubuntu, arch, fedora.
 install_distro() {
     local key="$1"
 
     if [[ -z "$key" ]]; then
         log_error "install_distro: no distro key provided"
-        log_error "Valid keys: ${!DISTRO_MAP[*]}"
+        log_error "Valid keys: ${!DISTRO_IMAGE[*]}"
         return 1
     fi
 
-    local alias="${DISTRO_MAP[$key]}"
-    local name="${DISTRO_NAMES[$key]}"
+    local image="${DISTRO_IMAGE[$key]:-}"
+    local container="${DISTRO_CONTAINER[$key]:-}"
+    local name="${DISTRO_NAMES[$key]:-}"
 
-    if [[ -z "$alias" ]]; then
+    if [[ -z "$image" ]]; then
         log_error "install_distro: unknown distro key '$key'"
-        log_error "Valid keys: ${!DISTRO_MAP[*]}"
+        log_error "Valid keys: ${!DISTRO_IMAGE[*]}"
         return 1
     fi
 
     # Check if already installed.
-    if check_distro_installed "$alias"; then
-        log_info "$name ($alias) is already installed."
-        DISTRO_ALIAS="$alias"
+    if check_distro_installed "$container"; then
+        log_info "$name ($container) is already installed."
+        DISTRO_ALIAS="$container"
         DISTRO_NAME="$name"
         return 0
     fi
 
-    log_step "Installing $name via proot-distro..."
-    if ! proot-distro install "$alias"; then
+    log_step "Installing $name via proot-distro (image: $image)..."
+    if ! proot-distro install "$image"; then
         log_error "Failed to install $name."
         log_error "Check your internet connection and available storage."
         return 1
     fi
 
-    DISTRO_ALIAS="$alias"
+    DISTRO_ALIAS="$container"
     DISTRO_NAME="$name"
     log_success "$name installed successfully."
 }
 
-# remove_distro ALIAS
-# Removes an installed proot distro.
+# remove_distro CONTAINER_NAME
+# Removes an installed proot container.
 remove_distro() {
-    local alias="$1"
+    local container="$1"
 
-    if [[ -z "$alias" ]]; then
-        log_error "remove_distro: no alias provided"
+    if [[ -z "$container" ]]; then
+        log_error "remove_distro: no container name provided"
         return 1
     fi
 
-    if ! check_distro_installed "$alias"; then
-        log_warn "Distro '$alias' is not installed — nothing to remove."
+    if ! check_distro_installed "$container"; then
+        log_warn "Container '$container' is not installed — nothing to remove."
         return 0
     fi
 
-    log_step "Removing distro '$alias'..."
+    log_step "Removing container '$container'..."
 
-    if ! proot-distro remove "$alias"; then
-        log_error "Failed to remove distro '$alias'."
+    if ! proot-distro remove "$container"; then
+        log_error "Failed to remove container '$container'."
         return 1
     fi
 
     # Clear global state if the removed distro was the active one.
-    if [[ "$DISTRO_ALIAS" == "$alias" ]]; then
+    if [[ "$DISTRO_ALIAS" == "$container" ]]; then
         DISTRO_ALIAS=""
         DISTRO_NAME=""
     fi
 
-    log_success "Distro '$alias' removed."
+    log_success "Container '$container' removed."
 }
 
 # list_installed_distros
-# Prints a list of currently installed proot distros.
+# Prints a list of currently installed proot containers.
 list_installed_distros() {
-    log_step "Installed proot distributions:"
+    log_step "Installed proot containers:"
     printf "\n" >&2
 
-    local found=0
-    local line
-
-    while IFS= read -r line; do
-        if [[ "$line" == *"[installed]"* ]]; then
-            # Extract just the alias (first field on the line).
-            local alias
-            alias="$(echo "$line" | awk '{print $1}')"
-            printf "  ${GREEN}●${RESET}  %s\n" "$alias" >&2
-            found=1
-        fi
-    done < <(proot-distro list 2>/dev/null)
-
-    if [[ $found -eq 0 ]]; then
-        log_info "No distributions are currently installed."
-    fi
+    proot-distro list 2>/dev/null >&2 || log_info "No containers are currently installed."
 
     printf "\n" >&2
 }
